@@ -32,7 +32,7 @@ server <- function(input, output,session) {
     
     text_path <- parseDirPath(roots =  c('Documents' = Sys.getenv("HOME"), 'Local Disk' = Sys.getenv("HOMEDRIVE") ), input$select_path_btn)
     
-    baseDir <<- as.character(text_path)
+    .GlobalEnv$baseDir <- as.character(text_path)
     updateTextInput(session, "selected.root.folder", 
                     label = "Dir path chosen",
                     value = baseDir
