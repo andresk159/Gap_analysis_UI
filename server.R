@@ -1,0 +1,458 @@
+#
+# This is the server logic of a Shiny web application. You can run the 
+# application by clicking 'Run App' above.
+#
+# Find out more about building applications with Shiny here:
+# 
+#    http://shiny.rstudio.com/
+#
+
+library(shiny)
+urls <- read.csv("www/downloadable_files.csv", stringsAsFactors = F)
+shp <- shapefile("www/world_shape_simplified/all_countries_simplified.shp")
+level <- "lvl_1"
+if(Sys.getenv('SHINY_PORT') == "") options(shiny.maxRequestSize=30*1024^2)
+options(scipen = 999)
+source("www/helpers.R", local = TRUE)
+
+
+# Define server logic required to draw a histogram
+server <- function(input, output,session) {
+  
+  RV<-reactiveValues(Clicks=list())  #Store clicks events in a list
+  poly<-reactiveValues(poligonos=list())
+
+  #create button to select container folder to create dirs and download data
+  shinyDirChoose(input , id =  "select_path_btn", updateFreq = 0, session = session,
+                 defaultPath = "", roots =  c('Documents' = Sys.getenv("HOME"), 'Local Disk' = Sys.getenv("HOMEDRIVE") ))
+  
+  root_dir <- reactive(input$select_path_btn)
+  #boton para seleccionar los directorios
+  observeEvent(input$select_path_btn, {
+    
+    text_path <- parseDirPath(roots =  c('Documents' = Sys.getenv("HOME"), 'Local Disk' = Sys.getenv("HOMEDRIVE") ), input$select_path_btn)
+    
+    baseDir <<- as.character(text_path)
+    updateTextInput(session, "selected.root.folder", 
+                    label = "Dir path chosen",
+                    value = baseDir
+                      )
+    
+    
+      }, ignoreInit = TRUE)
+  
+
+  #boton para crear los directorios y descargar los scripts desde github
+  observeEvent(input$create_dirs,{
+    if(length(baseDir) != 0){
+      
+      .GlobalEnv$scDir<- paste(baseDir, "scripts", sep = .Platform$file.sep)
+        if(!dir.exists(srcDir)){ dir.create(srcDir)}
+        #descargar scripts desde github y unzip 
+        download.file("https://github.com/CIAT-DAPA/gap_analysis_landraces/archive/master.zip", 
+                      destfile = paste(srcDir, "scripts.zip", sep = .Platform$file.sep))
+        lst <- unzip(zipfile = paste(srcDir, "scripts.zip", sep = .Platform$file.sep), exdir = srcDir, overwrite = T, list = TRUE)[,1]
+        lst2 <- gsub("gap_analysis_landraces-master/", "", lst)
+        folders <- unique(substr(lst2, 1, regexpr(pattern = .Platform$file.sep, lst2) ))
+        junk_files <- c(".DS_Store", ".gitignore", "Gap analysis source code guide.pptx", "README.md")
+
+        unzip(zipfile = paste(srcDir, "scripts.zip", sep = .Platform$file.sep) ,
+              exdir = srcDir, 
+              overwrite = T, 
+              junkpaths = F)
+        
+        lapply(list.files(paste(srcDir, "gap_analysis_landraces-master", sep= .Platform$file.sep), full.names = T), function(i){
+          file.copy(i, srcDir, recursive = T, overwrite = TRUE)
+        })
+        
+        unlink(paste(srcDir, "gap_analysis_landraces-master", sep= .Platform$file.sep), recursive =T)
+        
+        
+
+
+    }else{
+      showModal(modalDialog(title = "Warning message:",
+                            h3("Please, select a valid Dir path from the choose dir buttom.")
+                            ))
+    }
+    source(paste0(srcDir, "/02_sdm_modeling/preprocessing/config_crop.R")) # Configuring crop directories
+    
+    crop <- input$set.crop.name
+    .GlobalEnv$crop <- input$set.crop.name
+    level_1 <<- input$set.level.name
+    occName <<- level_1
+    .GlobalEnv$level <- "lvl_1"
+    
+    if(nchar(crop) > 0 & nchar(level_1) > 0 ){
+      
+      
+      config_crop_dirs(baseDir, crop, level_1, level_2 = NULL, level_3 = NULL)
+      
+    }else{   
+      showModal(modalDialog(
+        title = "Error message:",
+        h4("Please write a valid crop or race name"),footer = NULL,easyClose = TRUE
+      ))
+      Sys.sleep(3)
+      stopApp()
+      #session$close() 
+      }
+    
+    showModal(modalDialog(
+      title = "Success message:",
+      h4("The main directories were successfully created. Additionally, scripts were downloaded from GitHub and called."),footer = NULL,easyClose = TRUE
+    ))
+    updateButton(session, "create_dirs",label = "Dirs created",style = "success")
+    
+  })#end boton para crear directorios y descargar scripts
+ 
+  
+  output$map_selector <- renderLeaflet({
+    leaflet("map_selector") %>%setView(lat= 0, lng = 0, zoom = 1) %>% addTiles(options = providerTileOptions(noWrap = TRUE) )%>% addPolygons(data= shp,stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
+                                            opacity = 0.5, fillOpacity = 0.5,
+                                            fillColor = "#D6DEE6",
+                                            highlightOptions = highlightOptions(color = "#696262", weight = 2,
+                                                                                bringToFront = TRUE)
+                                            )
+    
+  })
+  
+  
+  observeEvent(input$area_selector, {
+    
+    cont <- as.numeric(input$area_selector)
+    if(cont == 0 | cont == 8){
+      shp_custm <<- shp[shp@data$REGION != cont, ]
+    }else{
+      shp_custm <<- shp[shp@data$REGION == cont, ]
+  }
+
+    leafletProxy("map_selector") %>% clearShapes() %>% addPolygons(data= shp_custm, stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
+                                                 opacity = 0.5, fillOpacity = 0.5,
+                                                 fillColor = "#D6DEE6",
+                                                 highlightOptions = highlightOptions(color = "#696262", weight = 2,
+                                                                                     bringToFront = TRUE)
+                                                 )
+  })
+  
+  
+observeEvent(input$map_selector_shape_click,{ 
+    
+    if(as.numeric(input$area_selector) == 8){
+      click2 <- input$map_selector_shape_click
+      lat_lng <- unlist(click2)[3:2]
+      lat_lng <- SpatialPoints(t(as.data.frame(lat_lng)), proj4string = crs(shp))
+      x <- over( lat_lng, shp)$ISO3
+      
+      RV$Clicks<-c(RV$Clicks,x)
+      countries <- (unlist(RV$Clicks))
+
+      nms <- shp@data[shp@data$ISO3 %in% countries, "NAME"]
+      updateCheckboxGroupInput(session, inputId = "chk_bx_gr", label = "Countries selected:", choices = nms, selected = nms)
+
+    }
+  })
+  
+
+ observeEvent(input$chk_bx_gr, {
+   
+if(as.numeric(input$area_selector) == 8){
+  
+  shp_custm <<- shp[shp@data$NAME %in% as.character(input$chk_bx_gr), ]
+  
+  leafletProxy("map_selector")%>% clearShapes()%>% 
+    
+    addPolygons(data= shp, stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
+                opacity = 0.5, fillOpacity = 0.5,
+                fillColor = "#D6DEE6",
+                highlightOptions = highlightOptions(color = "#696262", weight = 2,
+                                                    bringToFront = TRUE) ) %>% 
+    addPolygons(data= shp_custm, stroke = T,color = "#F57E7E", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
+                opacity = 0.8, fillOpacity = 0.8,
+                fillColor = "#D6DEE6",
+                highlightOptions = highlightOptions(color = "#696262", weight = 2,
+                                                    bringToFront = TRUE))
+  
+  
+}
+ 
+ })
+ 
+ observeEvent(input$create_mask,{
+   
+      if(nchar(as.character(input$mask_name)) != 0){
+     ## poner bussy indicator
+     msk <<- paste(baseDir, "input_data", "mask",paste0("mask_" , as.character(input$mask_name), ".tif") , sep = .Platform$file.sep)
+     
+     withBusyIndicatorServer("create_mask", {
+       
+     raster("www/masks/mask_world.tif") %>% 
+       raster::crop(., y = extent(shp_custm)) %>%
+       raster::mask(., shp_custm) %>%
+       writeRaster(., msk, overwrite = T)
+     
+       }) 
+     updateButton(session, "create_mask",label = "Mask created",style = "success")
+     region <<- input$mask_name
+     
+   }else{
+     showModal(modalDialog(
+       title = "Warning message:",
+       h4("Please write a valid name for the mask file."),footer = NULL,easyClose = TRUE ))
+     
+   }
+   
+   
+ })
+ 
+ 
+#####                                    #####
+##### DESCARGA DE INPUT RASTER Y DEMAS  #####
+#####                                  #####
+ 
+ observeEvent(input$download_data, {
+   lg <- ifelse(input$download_spam == 2, TRUE, FALSE)
+   withBusyIndicatorServer("download_data", {
+   if(lg){
+     urls %>% dplyr::filter(., screen_name == as.character(input$slct_crop_name)) %>% dplyr::select(., name, download_url)  %>%  
+       apply(., 1,function(i){
+         download.file(as.character(i[2]), destfile = paste(baseDir, "input_data", "by_crop", .GlobalEnv$crop, "raster","world",  as.character(i[1]), sep  = .Platform$file.sep), mode = "wb")
+       } )
+   }
+   
+   if(as.logical(input$download_clim) ){
+     
+     urls %>% dplyr::filter(., screen_name == "generic_rasters") %>% dplyr::select(., name, download_url)  %>%  
+       apply(., 1,function(i){
+         download.file(as.character(i[2]), destfile = paste(baseDir, "input_data", "generic_rasters","world",  as.character(i[1]), sep  = .Platform$file.sep), mode = "wb")
+       } )
+     #download friction surface
+     if(!file.exists(paste(baseDir, "input_data", "auxiliar_rasters", "friction_surface.tif", sep = .Platform$file.sep))){
+       download.file("https://drive.google.com/uc?export=download&id=1ssBlQBtaVZw-c-ALS2iPlztYORughq6h", destfile = paste(baseDir, "input_data", "auxiliar_rasters", "friction_surface.tif", sep = .Platform$file.sep), mode = "wb")
+     }
+     #download ecosregions raster
+     if(!file.exists(paste(baseDir, "input_data", "ecosystems", "World_ELU_2015_5km.tif", sep = .Platform$file.sep))){
+       download.file("https://drive.google.com/uc?export=download&id=1pdCXTej4-92VIY9sbdaiMecZNpsopsWc", destfile = paste(baseDir, "input_data", "ecosystems", "World_ELU_2015_5km.tif", sep = .Platform$file.sep), mode = "wb")
+     }
+     
+       
+     
+     
+     }
+   })
+   updateButton(session, "download_data",label = "Files downloaded",style = "success")
+ })
+ 
+ ### crop raster after they has been download
+ 
+ observeEvent(input$crop_rasters, {
+   withBusyIndicatorServer("crop_rasters", {  
+   if(file.exists(msk) & nchar(region) != 0 & nchar(level_1) != 0 & nchar(crop)  != 0 & nchar(occName) != 0){
+     source(paste(srcDir, "/02_sdm_modeling/preprocessing/config.R", sep = ""), local = F)
+     
+   }
+   crop_raster(mask   = mask,
+               region = region )
+   updateButton(session, "crop_rasters",label = "Rasters cropped",style = "success")
+   })
+   
+ })
+ 
+ 
+ 
+ #### cargar base de datos y realizar el proceso de limpieza 
+ bd <- reactive({
+
+   req(input$data_in)
+   tryCatch(
+     {
+       df.raw <- read.csv(input$data_in$datapath, header = TRUE, sep = ",") %>% dplyr::slice(., 1:(nrow(.)*0.2))
+       
+       
+     },
+     error = function(e) {
+       # return a safeError if a parsing error occurs
+       stop(safeError(e))
+     }
+   )
+   return(df.raw)
+ })
+ 
+
+ 
+  output$data_prev <- renderDataTable({
+    bd()
+  }, options = list(pageLength =5, scrollX = FALSE))
+  
+  
+ ########## boton para crear la base de datos
+  observeEvent(input$prepare_data, {
+    
+   withBusyIndicatorServer("prepare_data", {
+     
+
+    if(file.exists(msk) & nchar(region) != 0 & nchar(level_1) != 0 & nchar(crop)  != 0 & nchar(occName) != 0){
+      source(paste(srcDir, "/02_sdm_modeling/preprocessing/config.R", sep = ""), local = F)
+      
+    }
+    lgx <- ifelse(input$do_ensemble_models == "1", FALSE,  TRUE) 
+    
+      
+    prepare_input_data(data_path = input$data_in$datapath,
+                       col_number = input$col_number,
+                       do.ensemble.models = lgx,
+                       add.latitude = as.logical(input$add.latitude),
+                       add.longitude = as.logical(input$add.longitude),
+                       do.predictions = as.logical(input$do.predictions),
+                       sampling_mthd = input$sampling_mthd,
+                       mask = input$mask$datapath)
+  
+   
+      updateButton(session, "prepare_data",label = "Database consolidated",style = "success")
+    })
+    
+    bd_final <- reactive({
+      if(file.exists( paste0(classResults, "/", crop, "_lvl_1_bd.csv"))){
+        bd_prev <- read.csv(paste0(classResults, "/", crop, "_lvl_1_bd.csv"))
+      }
+      return(bd_prev)
+    })
+    
+    output$data_out <-  renderDataTable({
+     bd_final()
+    }, options = list(pageLength =5, scrollX = TRUE))
+    
+
+  })
+  
+  
+  ##### cost distance Function ####
+  
+  observeEvent(input$calculate_cost,{
+    
+    withBusyIndicatorServer("calculate_cost", { 
+    create_occ_shp(file_path   = input$occ_in$datapath,
+                   file_output = paste0(occDir,"/Occ.shp"),
+                   validation  = FALSE)
+    
+    # Cost distance process according with the level of analysis
+    cost_dist_function(
+      outDir       = gap_outDir,
+      friction     = input$friction_in$datapath,
+      mask         = mask,
+      occDir       = occDir,
+      arcgis       = FALSE,
+      code         = paste0(sp_Dir_input, "/cost_dist.py")
+    )
+    
+    })
+    updateButton(session, "calculate_cost",label = "Raster calculated",style = "success")
+    
+   
+    output$out_1 <- renderPlot({
+      shp_ctm <- shp[shp@data$NAME != "Antarctica",] %>% raster::crop(., y = extent(raster(paste0(gap_outDir,"/cost_dist.tif")) ))
+      
+      ggplot() +
+        geom_raster(data = raster(paste0(gap_outDir,"/cost_dist.tif")) %>% as.data.frame(., xy =T) %>% dplyr::filter(., !is.na(cost_dist)), aes(x = x, y = y, fill = cost_dist)) +
+        coord_equal() +
+        scale_fill_continuous(type = "viridis")+ 
+        geom_polygon(data=shp_ctm, aes(x=long, y=lat, group=group),fill=NA,color="black", size=0.7)+
+        geom_point(data = shapefile(paste0(occDir,"/Occ.shp")) %>% as.data.frame(),mapping =  aes(x = coords.x1 , y = coords.x2, color = "red"))+
+        theme_dark() +
+        xlab("") +
+        ylab("") 
+        #theme(legend.position = "none")+
+        
+    
+    })
+    
+  })
+  
+
+  #########               ########
+  ######### SDM MODELLING ########
+  #########               ########
+  
+  ## check if occ file exists
+  
+  output$occ_exists <- renderUI({
+    tags$div(id = "occ_status", style = " 
+             width: 100%;
+             padding: 12px 20px;
+             margin: 4px 0;
+             display: inline-block;
+             border: 1px solid #ccc;
+             border-radius: 4px;
+             box-sizing: border-box;
+             background-color: #D7D7D7;",
+             HTML(ifelse(file.exists(paste(classResults, paste0(crop, "_lvl_1_bd.csv"), sep = .Platform$file.sep)), 
+                         paste("<p>Database  <font color = 'green'><strong> is already created</strong> </font></p>") , 
+                         paste("<p>Database  <font color = 'red'><strong>  not exists</strong> </font></p>"))
+    ))
+    
+  })
+  
+  
+observeEvent(input$create_pseudo, {
+  
+  withBusyIndicatorServer("create_pseudo", { 
+    
+    .GlobalEnv$var_names   <- model_driver(sp_Dir      = sp_Dir,
+                                           mask        = mask,
+                                           occName     = occName,
+                                           extension_r = ".tif",
+                                           all         = F,
+                                           overwrite   = T,
+                                           clsModel    = "ensemble",
+                                           correlation = 1,#input$cor_method,# 1. Correlation, 2. VIF, 3. PCA + VIF
+                                           pa_method = "all_area"#input$pseudo_method
+    )
+ 
+    .GlobalEnv$spData <- read.csv(paste0(swdDir, "/swd_", occName, ".csv"))
+    
+    })
+  updateButton(session, "create_pseudo",label = "File created",style = "success")
+  
+  
+})
+  
+  output$map2 <- renderLeaflet({
+    
+    req(spData)
+    
+    pal <- colorFactor(c("red", "blue"), domain = spData$status)
+    leaflet(data = spData ) %>% addTiles() %>% addCircles(., 
+                                                          lng = ~lon, 
+                                                          lat = ~lat , 
+                                                          color = ~pal(status), 
+                                                          fillOpacity = 1, 
+                                                          radius = 10000,
+                                                          stroke = F,
+                                                          group =   "pse") %>%
+      addLegend(color = c("red", "blue"), 
+                labels = c("Pseudo-absences", "Occurrences"), 
+                group = "pse", 
+                position = "bottomleft")
+    
+  })
+  
+  
+  
+  ##### SDM MODEL : MAXENT MODEL SECIFICATIONS ###############33
+  
+  observe({
+    req(input$feat)
+    print(paste(input$feat, collapse = ""))
+  })
+  
+}#end everything
+
+
+
+
+
+
+
+
+
+
