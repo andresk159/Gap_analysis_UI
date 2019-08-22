@@ -5,13 +5,15 @@
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "2081595173",
+    "hash" : "0",
     "id" : "D55A10BD",
     "lastKnownWriteTime" : 1565637012,
     "last_content_update" : 1565637012,
     "path" : "D:/Gap_analysis_UI/www/scripts/master_code_documented.R",
     "project_path" : "master_code_documented.R",
     "properties" : {
+        "cursorPosition" : "5,78",
+        "scrollLine" : "0"
     },
     "relative_order" : 3,
     "source_on_save" : false,

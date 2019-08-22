@@ -5,13 +5,15 @@
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "3097876888",
+    "hash" : "3338192833",
     "id" : "8E0CC907",
-    "lastKnownWriteTime" : 1564153303,
-    "last_content_update" : 1564153303,
+    "lastKnownWriteTime" : 1566420425,
+    "last_content_update" : 1566420425502,
     "path" : "D:/Gap_analysis_UI/www/scripts/00_config/config.R",
     "project_path" : "00_config/config.R",
     "properties" : {
+        "cursorPosition" : "38,52",
+        "scrollLine" : "24"
     },
     "relative_order" : 4,
     "source_on_save" : false,

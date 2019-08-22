@@ -8,17 +8,37 @@
 #
 
 library(shiny)
+# setting global variables
+g <- gc(reset = T); rm(list = ls()); options(warn = -1); options(scipen = 999)
 urls <- read.csv("www/downloadable_files.csv", stringsAsFactors = F)
 shp <- shapefile("www/world_shape_simplified/all_countries_simplified.shp")
-level <- "lvl_1"
+scrDir <- "www/scripts"
 if(Sys.getenv('SHINY_PORT') == "") options(shiny.maxRequestSize=30*1024^2)
 options(scipen = 999)
+update_scripts <- FALSE
 source("www/helpers.R", local = TRUE)
 
 
 # Define server logic required to draw a histogram
 server <- function(input, output,session) {
+
+  output$messageMenu <- renderMenu({
+    
+    crop    <- ifelse(nchar(input$set.crop.name) == 0, "Not specified yet", input$set.crop.name)
+    occName <- ifelse(nchar(input$set.level.name) == 0, "Not specified yet", input$set.level.name)
+    region  <- ifelse(nchar(input$mask_name) == 0, "Not specified yet", input$mask_name)
+
+    msgs <- list(messageItem(from = "Crop Name" , message = crop,    icon = icon("fas fa-seedling")),
+                 messageItem(from = "Group Name", message = occName, icon = icon("fas fa-sitemap")),
+                 messageItem(from = "Region"    , message = region,  icon = icon("fas fa-map-pin")) )
+   
+    # This is equivalent to calling:
+    #   dropdownMenu(type="messages", msgs[[1]], msgs[[2]], ...)
+    dropdownMenu(type = "messages", .list = msgs)
+    
+  })
   
+  rvs <- reactiveValues(baseDir = NULL)
   RV<-reactiveValues(Clicks=list())  #Store clicks events in a list
   poly<-reactiveValues(poligonos=list())
 
@@ -26,83 +46,123 @@ server <- function(input, output,session) {
   shinyDirChoose(input , id =  "select_path_btn", updateFreq = 0, session = session,
                  defaultPath = "", roots =  c('Documents' = Sys.getenv("HOME"), 'Local Disk' = Sys.getenv("HOMEDRIVE") ))
   
-  root_dir <- reactive(input$select_path_btn)
+  
   #boton para seleccionar los directorios
   observeEvent(input$select_path_btn, {
-    
     text_path <- parseDirPath(roots =  c('Documents' = Sys.getenv("HOME"), 'Local Disk' = Sys.getenv("HOMEDRIVE") ), input$select_path_btn)
-    
+    rvs$baseDir <- text_path
     .GlobalEnv$baseDir <- as.character(text_path)
     updateTextInput(session, "selected.root.folder", 
                     label = "Dir path chosen",
-                    value = baseDir
-                      )
+                    value = as.character(text_path)
+    )
     
-    
-      }, ignoreInit = TRUE)
-  
-
+  })
+ 
+observe({
+  print(input$update_scripts)
+})
   #boton para crear los directorios y descargar los scripts desde github
   observeEvent(input$create_dirs,{
-    if(length(baseDir) != 0){
+   print(rvs$baseDir)
+    if(!is.null(rvs$baseDir)){
       
-      .GlobalEnv$scDir<- paste(baseDir, "scripts", sep = .Platform$file.sep)
-        if(!dir.exists(srcDir)){ dir.create(srcDir)}
-        #descargar scripts desde github y unzip 
-        download.file("https://github.com/CIAT-DAPA/gap_analysis_landraces/archive/master.zip", 
-                      destfile = paste(srcDir, "scripts.zip", sep = .Platform$file.sep))
-        lst <- unzip(zipfile = paste(srcDir, "scripts.zip", sep = .Platform$file.sep), exdir = srcDir, overwrite = T, list = TRUE)[,1]
-        lst2 <- gsub("gap_analysis_landraces-master/", "", lst)
-        folders <- unique(substr(lst2, 1, regexpr(pattern = .Platform$file.sep, lst2) ))
-        junk_files <- c(".DS_Store", ".gitignore", "Gap analysis source code guide.pptx", "README.md")
-
-        unzip(zipfile = paste(srcDir, "scripts.zip", sep = .Platform$file.sep) ,
-              exdir = srcDir, 
-              overwrite = T, 
-              junkpaths = F)
+      crop            <- input$set.crop.name
+      occName         <- input$set.level.name
+      .GlobalEnv$crop <- input$set.crop.name
+      .GlobalEnv$occName <- input$set.level.name
+      
+      if(nchar(crop) > 0 & nchar(occName) > 0 ){
+        print(baseDir)
+        global_data_dir<- paste0(baseDir, "/global_data")
+        worldDir       <- paste0(global_data_dir, "/environmental_rasters");if(!file.exists(worldDir)){dir.create(worldDir, recursive = TRUE)}
+        mapspamDir     <- paste0(global_data_dir, "/MapSpam_rasters");if(!file.exists(mapspamDir)){dir.create(mapspamDir, recursive = TRUE)}
+        aux_dir        <- paste0(global_data_dir, "/auxiliar_rasters");if(!file.exists(aux_dir)){dir.create(aux_dir, recursive = TRUE)}
+        res_dir        <- paste0(baseDir, "/results/", crop);if(!file.exists(res_dir)){dir.create(res_dir, recursive = TRUE)}
         
-        lapply(list.files(paste(srcDir, "gap_analysis_landraces-master", sep= .Platform$file.sep), full.names = T), function(i){
-          file.copy(i, srcDir, recursive = T, overwrite = TRUE)
-        })
+        sendSweetAlert(
+          session = session,
+          title = "Success !!",
+          text = "The main directories were successfully created.",
+          type = "success"
+        )
         
-        unlink(paste(srcDir, "gap_analysis_landraces-master", sep= .Platform$file.sep), recursive =T)
         
+        updateButton(session, "create_dirs",label = "Dirs created",style = "success")
+      }else{   
+        sendSweetAlert(
+          session = session,
+          title = "Error !!",
+          text = "Please write a valid Crop or Race name.",
+          type = "error"
+        )
+        #Sys.sleep(3)
+        #stopApp()
+        #session$close() 
+      }
         
-
+      #update scripts
+      #input$update_scripts == "Yes"
+      if(FALSE){
+        #descargar scripts desde github
+        lists <- c( "00_config/config.R",
+                    "00_config/config_crop.R",
+                    "00_config/pre_config.R",
+                    "01_classification/.Rhistory",
+                    "01_classification/classification_function.R",
+                    "01_classification/classification_function_new_models.R",
+                    "01_classification/create_occ_shp.R",
+                    "01_classification/crop_raster.R",
+                    "01_classification/prepare_input_data.R",
+                    "02_sdm_modeling/.DS_Store",
+                    "02_sdm_modeling/.Rhistory",
+                    "02_sdm_modeling/background_points.R",
+                    "02_sdm_modeling/calibration_function.R",
+                    "02_sdm_modeling/null_model.R",
+                    "02_sdm_modeling/sdm_maxnet_approach_function.R",
+                    "02_sdm_modeling/tuning_maxNet.R",
+                    "03_gap_methods/.DS_Store",
+                    "03_gap_methods/.Rhistory",
+                    "03_gap_methods/combine_score.R",
+                    "03_gap_methods/cost_distance_function.R",
+                    "03_gap_methods/create_buffers.R",
+                    "03_gap_methods/create_png_maps.R",
+                    "03_gap_methods/delaunay.R",
+                    "03_gap_methods/delaunay_geo_score.R",
+                    "03_gap_methods/ecogeo_cluster.R",
+                    "03_gap_methods/env_distance.R",
+                    "03_gap_methods/gap_maps.R",
+                    "03_gap_methods/gaps_validation.R",
+                    "03_gap_methods/generate_report.R",
+                    "03_gap_methods/kernel_function.R",
+                    "03_gap_methods/mask_delaunay.R",
+                    "03_gap_methods/rasterbuffer_to_polygons.R",
+                    "03_gap_methods/summary_function.R",
+                    "03_gap_methods/validation_function.R",
+                    "03_gap_methods/validation_helpers.R",
+                    "03_gap_methods/validation_helpers_original.R")
+        for(i in 1:length(lists)){
+          url <- paste0("https://raw.githubusercontent.com/andresk159/Gap_analysis_UI/master/www/scripts", lists[i])
+          download.file(url,destfile = paste("www", "scripts", lists[i], sep = .Platform$file.sep))
+        }
+        sendSweetAlert(
+          session = session,
+          title = "Success !!",
+          text = "the Most updated scripts were downloaded successfully.",
+          type = "success"
+        )
+      }
+ 
 
     }else{
-      showModal(modalDialog(title = "Warning message:",
-                            h3("Please, select a valid Dir path from the choose dir buttom.")
-                            ))
+      sendSweetAlert(
+        session = session,
+        title = "Error !!",
+        text = "Please, select a valid Dir path from the Choose Dir buttom.",
+        type = "error"
+      )
     }
-    source(paste0(srcDir, "/02_sdm_modeling/preprocessing/config_crop.R")) # Configuring crop directories
-    
-    crop <- input$set.crop.name
-    .GlobalEnv$crop <- input$set.crop.name
-    level_1 <<- input$set.level.name
-    occName <<- level_1
-    .GlobalEnv$level <- "lvl_1"
-    
-    if(nchar(crop) > 0 & nchar(level_1) > 0 ){
-      
-      
-      config_crop_dirs(baseDir, crop, level_1, level_2 = NULL, level_3 = NULL)
-      
-    }else{   
-      showModal(modalDialog(
-        title = "Error message:",
-        h4("Please write a valid crop or race name"),footer = NULL,easyClose = TRUE
-      ))
-      Sys.sleep(3)
-      stopApp()
-      #session$close() 
-      }
-    
-    showModal(modalDialog(
-      title = "Success message:",
-      h4("The main directories were successfully created. Additionally, scripts were downloaded from GitHub and called."),footer = NULL,easyClose = TRUE
-    ))
-    updateButton(session, "create_dirs",label = "Dirs created",style = "success")
+ 
     
   })#end boton para crear directorios y descargar scripts
  

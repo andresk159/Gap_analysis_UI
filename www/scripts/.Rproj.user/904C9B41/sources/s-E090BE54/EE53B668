@@ -1,19 +1,19 @@
 {
     "collab_server" : "",
     "contents" : "",
-    "created" : 1566317987717.000,
+    "created" : 1566422724451.000,
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
     "hash" : "0",
-    "id" : "6E86A6E1",
-    "lastKnownWriteTime" : 1566316564,
-    "last_content_update" : 1566316564,
+    "id" : "EE53B668",
+    "lastKnownWriteTime" : 1566489195,
+    "last_content_update" : 1566489195602,
     "path" : "D:/Gap_analysis_UI/ui.R",
     "project_path" : null,
     "properties" : {
-        "cursorPosition" : "10,68",
-        "scrollLine" : "8"
+        "cursorPosition" : "51,39",
+        "scrollLine" : "34"
     },
     "relative_order" : 1,
     "source_on_save" : false,

@@ -8,13 +8,18 @@
 #
 
 library(pacman)
-pacman::p_load(shiny, shinydashboard, leaflet, raster, rgdal, rgeos, sp, rsconnect, ggplot2, shinyFiles, shinyBS, shinyjs, yaml )
+pacman::p_load(shiny, shinydashboard, leaflet, raster, rgdal, rgeos, sp, rsconnect, ggplot2, shinyFiles, shinyBS, shinyjs, yaml, shinyWidgets )
 # Define UI for application that draws a histogram
 urls <- read.csv("www/downloadable_files.csv")
 source("www/helpers.R", local = TRUE)
 
 header <- dashboardHeader(
-  title = "Gap analysis UI"
+  title = "Gap analysis UI",
+  dropdownMenuOutput("messageMenu")
+  # tags$li(a(href = 'http://shinyapps.company.com',
+  #           icon("power-off"),
+  #           title = "Back to Apps Home"),
+  #         class = "dropdown")
 )
 
 sidebar <- dashboardSidebar(
@@ -22,7 +27,7 @@ sidebar <- dashboardSidebar(
                            menuItem(" Introduction", tabName = "intro", icon = icon("far fa-sun"), selected = T),
                            menuItem(" Assistants", tabName = "tab1", icon = icon("far fa-cogs")),
                            menuItem(" Cost Distance", tabName = "tab2", icon = icon("fab fa-contao")),
-                          menuItem(" SDM", tabName = "tab3", icon = icon("fas fa-globe-americas"))
+                           menuItem(" SDM", tabName = "tab3", icon = icon("fas fa-globe-americas"))
               ) 
                            
                            )
@@ -44,11 +49,15 @@ body <- dashboardBody(
                            textInput(inputId =  "selected.root.folder", label = "Please select a dir path", value = "No dir path selected"),
                            shinyDirButton(id = "select_path_btn", label = "Choose Dir", title = "Select folder to store all file system", buttonType = "default",
                                           class = NULL, icon = NULL, style = NULL),
-                           div(style="float:right;width:95px",
-                               bsButton("create_dirs", size="default",label = "Create dirs", block = F, style="primary"),
-                               bsTooltip(id = "create_dirs", title = "Create directories", placement = "right", trigger = "hover")
-                           )
-                           
+                           div(id ="separator", style = "width:100px; height:15px"),
+                           radioGroupButtons(inputId = "update_scripts", label = "Update scripts", choices = c("No","Yes"), individual = F, status = "primary",
+                                             checkIcon = list( yes = tags$i(class = "fa fa-circle", 
+                                                                            style = "color: darkgray"),
+                                                               no = tags$i(class = "fa fa-circle-o", 
+                                                                           style = "color: darkgray"))
+                           ),
+                           bsButton("create_dirs", size="default",label = "Create dirs", block = F, style="primary"),
+                           bsTooltip(id = "create_dirs", title = "Create directories", placement = "right", trigger = "hover")
                            
                          ),
                          mainPanel(
@@ -89,26 +98,32 @@ body <- dashboardBody(
                      sidebarLayout(
                        sidebarPanel(
                          h3("Region creator assistant"),
-                         selectInput("area_selector", label = "Select one region:", choices = c("Wolrd" = 0,
-                                                                                         "America" = 19,
-                                                                                         "Europe" = 150,
-                                                                                         "Asia" = 142,
-                                                                                         "Africa" = 2,
-                                                                                         "Oceania" = 9,
-                                                                                         "---Custom region---" = 8), selected = 0),
-                         #haciendo el conditional panel
-                         conditionalPanel( condition = "input.area_selector == 8",
-                                           checkboxGroupInput("chk_bx_gr", "Countries selected:", choices = "None", selected = "None")
-                           
-                         ),
-                         textInput("mask_name", label = "Set a name for raster's mask"),
-                         useShinyjs(),
-                         withBusyIndicatorUI(
-                          button = bsButton("create_mask", size="default",label = "Create Mask", style="primary")
-                           
-                         ),
-                         bsTooltip(id = "create_mask", title = "Create Raster Mask", placement = "left", trigger = "hover")
-                         
+                         radioGroupButtons("choose_1", label = "", choices  = c("Create new mask" = 1, "Import existing mask"= 2), status = "primary", justified = T ),
+                         conditionalPanel(condition = "input.choose_1 == '1'",
+                                          
+                                          selectInput("area_selector", label = "Select one region:", choices = c("Wolrd" = 0,
+                                                                                                                 "America" = 19,
+                                                                                                                 "Europe" = 150,
+                                                                                                                 "Asia" = 142,
+                                                                                                                 "Africa" = 2,
+                                                                                                                 "Oceania" = 9,
+                                                                                                                 "---Custom region---" = 8), selected = 0),
+                                          #haciendo el conditional panel
+                                          conditionalPanel( condition = "input.area_selector == 8",
+                                                            checkboxGroupInput("chk_bx_gr", "Countries selected:", choices = "None", selected = "None")
+                                                            
+                                          ),
+                                          textInput("mask_name", label = "Set a name for raster's mask"),
+                                          useShinyjs(),
+                                          withBusyIndicatorUI(
+                                            button = bsButton("create_mask", size="default",label = "Create Mask", style="primary")
+                                            
+                                          ),
+                                          bsTooltip(id = "create_mask", title = "Create Raster Mask", placement = "left", trigger = "hover")),
+                         conditionalPanel(condition = "input.choose_1 == '2'",
+                                          fileInput("mask_path", "Select mask file:",multiple = FALSE,accept = c(".tif"))
+                                          
+                                          )
                          
                        ),
                        mainPanel(
