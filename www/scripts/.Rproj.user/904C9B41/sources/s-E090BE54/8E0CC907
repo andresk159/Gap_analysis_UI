@@ -5,7 +5,7 @@
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "3338192833",
+    "hash" : "0",
     "id" : "8E0CC907",
     "lastKnownWriteTime" : 1566420425,
     "last_content_update" : 1566420425502,
@@ -13,7 +13,7 @@
     "project_path" : "00_config/config.R",
     "properties" : {
         "cursorPosition" : "38,52",
-        "scrollLine" : "24"
+        "scrollLine" : "0"
     },
     "relative_order" : 4,
     "source_on_save" : false,

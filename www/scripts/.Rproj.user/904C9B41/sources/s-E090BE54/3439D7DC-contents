@@ -39,8 +39,8 @@ server <- function(input, output,session) {
   })
   
   rvs <- reactiveValues(baseDir = NULL)
-  RV<-reactiveValues(Clicks=list())  #Store clicks events in a list
-  poly<-reactiveValues(poligonos=list())
+  polylines <- reactiveValues(geom = data)
+  clicklist <- reactiveValues(ids = vector(), names = vector())
 
   #create button to select container folder to create dirs and download data
   shinyDirChoose(input , id =  "select_path_btn", updateFreq = 0, session = session,
@@ -59,9 +59,7 @@ server <- function(input, output,session) {
     
   })
  
-observe({
-  print(input$update_scripts)
-})
+
   #boton para crear los directorios y descargar los scripts desde github
   observeEvent(input$create_dirs,{
    print(rvs$baseDir)
@@ -168,76 +166,81 @@ observe({
  
   
   output$map_selector <- renderLeaflet({
-    leaflet("map_selector") %>%setView(lat= 0, lng = 0, zoom = 1) %>% addTiles(options = providerTileOptions(noWrap = TRUE) )%>% addPolygons(data= shp,stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
-                                            opacity = 0.5, fillOpacity = 0.5,
-                                            fillColor = "#D6DEE6",
-                                            highlightOptions = highlightOptions(color = "#696262", weight = 2,
-                                                                                bringToFront = TRUE)
-                                            )
+    leaflet("map_selector") %>% 
+      setView(lat= 0, lng = 0, zoom = 1) %>% 
+      addTiles(options = providerTileOptions(noWrap = TRUE) )%>% 
+      addPolygons(data= shp,stroke = T,color = "#4682B4", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
+                  label = ~as.character(shp@data$ISO3),
+                  layerId = shp@data$ISO3,
+                  opacity = 0.5, fillOpacity = 0.5,
+                  fillColor = "#D6DEE6",
+                  highlightOptions = highlightOptions(color = "#696262", weight = 2,
+                                                      bringToFront = F) )
     
   })
   
   
-  observeEvent(input$area_selector, {
+
+  observeEvent(c(input$map_selector_shape_click, input$area_selector),{
+    proxy <- leafletProxy("map_selector")
     
     cont <- as.numeric(input$area_selector)
     if(cont == 0 | cont == 8){
       shp_custm <<- shp[shp@data$REGION != cont, ]
+      proxy %>% 
+        clearShapes() %>% 
+        addPolygons(data= shp_custm, stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
+                    opacity = 0.5, fillOpacity = 0.5,
+                    layerId = shp_custm@data$ISO3,
+                    fillColor = "#D6DEE6",
+                    highlightOptions = highlightOptions(color = "#696262", weight = 2,
+                                                        bringToFront = TRUE) )
     }else{
       shp_custm <<- shp[shp@data$REGION == cont, ]
-  }
-
-    leafletProxy("map_selector") %>% clearShapes() %>% addPolygons(data= shp_custm, stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
-                                                 opacity = 0.5, fillOpacity = 0.5,
-                                                 fillColor = "#D6DEE6",
-                                                 highlightOptions = highlightOptions(color = "#696262", weight = 2,
-                                                                                     bringToFront = TRUE)
-                                                 )
-  })
-  
-  
-observeEvent(input$map_selector_shape_click,{ 
+      proxy %>% 
+        clearShapes() %>% 
+        addPolygons(data= shp_custm, stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
+                    opacity = 0.5, fillOpacity = 0.5,
+                    layerId = shp_custm@data$ISO3,
+                    fillColor = "#D6DEE6",
+                    highlightOptions = highlightOptions(color = "#696262", weight = 2,
+                                                        bringToFront = TRUE) )
+    }
+    
+    
     
     if(as.numeric(input$area_selector) == 8){
-      click2 <- input$map_selector_shape_click
-      lat_lng <- unlist(click2)[3:2]
-      lat_lng <- SpatialPoints(t(as.data.frame(lat_lng)), proj4string = crs(shp))
-      x <- over( lat_lng, shp)$ISO3
       
-      RV$Clicks<-c(RV$Clicks,x)
-      countries <- (unlist(RV$Clicks))
-
-      nms <- shp@data[shp@data$ISO3 %in% countries, "NAME"]
-      updateCheckboxGroupInput(session, inputId = "chk_bx_gr", label = "Countries selected:", choices = nms, selected = nms)
-
+      click <- input$map_selector_shape_click
+      # Store click IDS in reactiveValue
+      clicklist$ids <- c(clicklist$ids, click$id)
+  
+      if(any(duplicated(clicklist$ids))){
+        
+        val <- clicklist$ids[duplicated(clicklist$ids)]
+        clicklist$ids <- clicklist$ids[!clicklist$ids %in% val]
+      }
+      
+      shp_custom <- shp[shp@data$ISO3 %in% clicklist$ids,]
+      clicklist$names <- shp_custom@data$NAME
+      print(clicklist$names)
+      proxy %>% 
+        addPolygons( data= shp_custom,
+                     layerId = shp_custom@data$ISO3,
+                     color = "#444444", weight = 0.5, smoothFactor = 0.5,
+                     opacity = 1.0, fillOpacity = 0.5,
+                     fillColor ="yellow" )
+    }
+    
+  }) 
+ 
+observe({ 
+    if(as.numeric(input$area_selector) == 8){
+      updateCheckboxGroupInput(session, inputId = "chk_bx_gr", label = "Countries selected:", choices = clicklist$names, selected = clicklist$names)
+   
     }
   })
-  
 
- observeEvent(input$chk_bx_gr, {
-   
-if(as.numeric(input$area_selector) == 8){
-  
-  shp_custm <<- shp[shp@data$NAME %in% as.character(input$chk_bx_gr), ]
-  
-  leafletProxy("map_selector")%>% clearShapes()%>% 
-    
-    addPolygons(data= shp, stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
-                opacity = 0.5, fillOpacity = 0.5,
-                fillColor = "#D6DEE6",
-                highlightOptions = highlightOptions(color = "#696262", weight = 2,
-                                                    bringToFront = TRUE) ) %>% 
-    addPolygons(data= shp_custm, stroke = T,color = "#F57E7E", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
-                opacity = 0.8, fillOpacity = 0.8,
-                fillColor = "#D6DEE6",
-                highlightOptions = highlightOptions(color = "#696262", weight = 2,
-                                                    bringToFront = TRUE))
-  
-  
-}
- 
- })
- 
  observeEvent(input$create_mask,{
    
       if(nchar(as.character(input$mask_name)) != 0){
