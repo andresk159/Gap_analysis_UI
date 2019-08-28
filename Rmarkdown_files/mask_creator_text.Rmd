@@ -1,0 +1,15 @@
+---
+title: "mask_creator"
+output: html_document
+---
+
+### **Welcome to the Mask area creator Assistant** 
+
+*the assistant will support you to define the strategic areas in which the Gap Analysis has to be performed.*  
+
+***
+
+Feel free to create a continental mask selecting it from the, **"Region Menu"**, or create a customized study region clicking over the countries, and do not forget to write a name for the mask.  
+
+**file output: results/"crop\_name"/input\_data/mask\_"mask\_name".tif**
+

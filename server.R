@@ -21,27 +21,56 @@ source("www/helpers.R", local = TRUE)
 
 # Define server logic required to draw a histogram
 server <- function(input, output,session) {
+  ## define reactive values lists
+  rvs <- reactiveValues(baseDir = NULL)
+  shp_custm <- reactiveValues()
+  clicklist <- reactiveValues(ids = vector(), names = vector())
+  paths <- reactiveValues()
 
+# monitoring folder system
+observe({
+  if(!is.null(paths$region) & !is.null(paths$crop) & !is.null(paths$occName)){
+    #results per race dir
+    paths$results_dir    <- paste0(paths$baseDir, "/results/", paths$crop, "/", paths$region)
+    if(!file.exists(paths$results_dir)){dir.create(paths$results_dir, recursive = TRUE)}
+            #child folders
+            paths$sp_results <- paste(paths$results_dir, paths$occName, sep = .Platform$file.sep)
+            paths$occDir     <- paste0(paths$sp_results, "/occurrences");if(!file.exists(paths$occDir)){dir.create(paths$occDir, recursive = TRUE)}
+            paths$gap_outDir <- paste0(paths$sp_results, "/gap_scores");if(!file.exists(paths$gap_outDir)){dir.create(paths$gap_outDir, recursive = TRUE)}
+            paths$sdm_outDir <- paste0(paths$sp_results, "/species_distribution");if(!file.exists(paths$sdm_outDir)){dir.create(paths$sdm_outDir, recursive = TRUE)}
+            paths$gap_valDir <- paste0(paths$sp_results, "/gaps_validation");if(!file.exists(paths$gap_valDir)){dir.create(paths$gap_valDir, recursive = TRUE)}
+    #input data dir folders creation
+    paths$input_data_dir <- paste0(paths$results_dir, "/input_data")
+    if(!file.exists(paths$input_data_dir)){dir.create(paths$input_data_dir, recursive = TRUE)}          
+            #child Folders
+            paths$aux_rasts  <- paste0(paths$input_data_dir, "/auxiliar_rasters");if(!file.exists(paths$aux_rasts)){dir.create( paths$aux_rasts, recursive = TRUE)} 
+            paths$env_rasts  <- paste0(paths$input_data_dir, "/environmenal_rasters");if(!file.exists(paths$env_rasts)){dir.create(paths$env_rasts, recursive = TRUE)} 
+            paths$spam_rasts <- paste0(paths$input_data_dir, "/MapSpam_rasters");if(!file.exists(paths$spam_rasts)){dir.create(paths$spam_rasts, recursive = TRUE)}
+            paths$data_dir   <- paste0(paths$input_data_dir, "/cleaned_data");if(!file.exists(paths$data_dir)){dir.create(paths$data_dir, recursive = TRUE)}
+  }
+ 
+})
   output$messageMenu <- renderMenu({
     
-    crop    <- ifelse(nchar(input$set.crop.name) == 0, "Not specified yet", input$set.crop.name)
-    occName <- ifelse(nchar(input$set.level.name) == 0, "Not specified yet", input$set.level.name)
-    region  <- ifelse(nchar(input$mask_name) == 0, "Not specified yet", input$mask_name)
+    crop    <- ifelse(is.null(paths$crop), "Not specified yet", paths$crop)
+    occName <- ifelse(is.null(paths$occName), "Not specified yet", paths$occName)
+    region  <- ifelse(is.null(paths$region), "Not specified yet", paths$region)
 
     msgs <- list(messageItem(from = "Crop Name" , message = crop,    icon = icon("fas fa-seedling")),
                  messageItem(from = "Group Name", message = occName, icon = icon("fas fa-sitemap")),
                  messageItem(from = "Region"    , message = region,  icon = icon("fas fa-map-pin")) )
-   
+   if(nchar(input$set.crop.name) == 0 | nchar(input$set.level.name) | nchar(input$mask_name)){
+     icono <- icon("warning")
+   }else{
+     icono <- icon("info-circle")
+   }
     # This is equivalent to calling:
     #   dropdownMenu(type="messages", msgs[[1]], msgs[[2]], ...)
-    dropdownMenu(type = "messages", .list = msgs)
+    dropdownMenu(type = "messages", .list = msgs, icon = icono)
     
   })
   
-  rvs <- reactiveValues(baseDir = NULL)
-  polylines <- reactiveValues(geom = data)
-  clicklist <- reactiveValues(ids = vector(), names = vector())
-
+  
   #create button to select container folder to create dirs and download data
   shinyDirChoose(input , id =  "select_path_btn", updateFreq = 0, session = session,
                  defaultPath = "", roots =  c('Documents' = Sys.getenv("HOME"), 'Local Disk' = Sys.getenv("HOMEDRIVE") ))
@@ -50,8 +79,8 @@ server <- function(input, output,session) {
   #boton para seleccionar los directorios
   observeEvent(input$select_path_btn, {
     text_path <- parseDirPath(roots =  c('Documents' = Sys.getenv("HOME"), 'Local Disk' = Sys.getenv("HOMEDRIVE") ), input$select_path_btn)
-    rvs$baseDir <- text_path
-    .GlobalEnv$baseDir <- as.character(text_path)
+    paths$baseDir <- text_path
+    #.GlobalEnv$baseDir <- as.character(text_path)
     updateTextInput(session, "selected.root.folder", 
                     label = "Dir path chosen",
                     value = as.character(text_path)
@@ -62,21 +91,19 @@ server <- function(input, output,session) {
 
   #boton para crear los directorios y descargar los scripts desde github
   observeEvent(input$create_dirs,{
-   print(rvs$baseDir)
-    if(!is.null(rvs$baseDir)){
+  
+    if(!is.null(paths$baseDir)){
       
-      crop            <- input$set.crop.name
-      occName         <- input$set.level.name
-      .GlobalEnv$crop <- input$set.crop.name
-      .GlobalEnv$occName <- input$set.level.name
+      paths$crop <- input$set.crop.name
+      paths$occName <- input$set.level.name
       
-      if(nchar(crop) > 0 & nchar(occName) > 0 ){
-        print(baseDir)
-        global_data_dir<- paste0(baseDir, "/global_data")
-        worldDir       <- paste0(global_data_dir, "/environmental_rasters");if(!file.exists(worldDir)){dir.create(worldDir, recursive = TRUE)}
-        mapspamDir     <- paste0(global_data_dir, "/MapSpam_rasters");if(!file.exists(mapspamDir)){dir.create(mapspamDir, recursive = TRUE)}
-        aux_dir        <- paste0(global_data_dir, "/auxiliar_rasters");if(!file.exists(aux_dir)){dir.create(aux_dir, recursive = TRUE)}
-        res_dir        <- paste0(baseDir, "/results/", crop);if(!file.exists(res_dir)){dir.create(res_dir, recursive = TRUE)}
+      if(nchar(paths$crop) > 0 & nchar(paths$occName) > 0 ){
+       
+        paths$global_data_dir<- paste0(paths$baseDir, "/global_data")
+        paths$worldDir       <- paste0(paths$global_data_dir, "/environmental_rasters");if(!file.exists(paths$worldDir)){dir.create(paths$worldDir, recursive = TRUE)}
+        paths$mapspamDir     <- paste0(paths$global_data_dir, "/MapSpam_rasters");if(!file.exists(paths$mapspamDir)){dir.create(paths$mapspamDir, recursive = TRUE)}
+        paths$aux_dir        <- paste0(paths$global_data_dir, "/auxiliar_rasters");if(!file.exists(paths$aux_dir)){dir.create(paths$aux_dir, recursive = TRUE)}
+        #paths$res_dir        <- paste0(paths$baseDir, "/results/", paths$crop);if(!file.exists(paths$res_dir)){dir.create(paths$res_dir, recursive = TRUE)}
         
         sendSweetAlert(
           session = session,
@@ -94,9 +121,7 @@ server <- function(input, output,session) {
           text = "Please write a valid Crop or Race name.",
           type = "error"
         )
-        #Sys.sleep(3)
-        #stopApp()
-        #session$close() 
+      
       }
         
       #update scripts
@@ -179,29 +204,30 @@ server <- function(input, output,session) {
     
   })
   
-  
-
-  observeEvent(c(input$map_selector_shape_click, input$area_selector),{
+########                            #########
+###  features shape selector or MASK creator
+#######                            #########  
+observeEvent(c(input$map_selector_shape_click, input$area_selector),{
     proxy <- leafletProxy("map_selector")
-    
+    print(shp_custm$shp)
     cont <- as.numeric(input$area_selector)
     if(cont == 0 | cont == 8){
-      shp_custm <<- shp[shp@data$REGION != cont, ]
+      shp_custm$shp <- shp[shp@data$REGION != cont, ]
       proxy %>% 
         clearShapes() %>% 
-        addPolygons(data= shp_custm, stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
+        addPolygons(data= shp_custm$shp, stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
                     opacity = 0.5, fillOpacity = 0.5,
-                    layerId = shp_custm@data$ISO3,
+                    layerId = shp_custm$shp@data$ISO3,
                     fillColor = "#D6DEE6",
                     highlightOptions = highlightOptions(color = "#696262", weight = 2,
                                                         bringToFront = TRUE) )
     }else{
-      shp_custm <<- shp[shp@data$REGION == cont, ]
+      shp_custm$shp <- shp[shp@data$REGION == cont, ]
       proxy %>% 
         clearShapes() %>% 
-        addPolygons(data= shp_custm, stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
+        addPolygons(data= shp_custm$shp, stroke = T,color = "#2690EF", weight = 1, smoothFactor = 0.2,  #adicionar el archivo .shp al mapa y hacer que brillen cuadno son seleccionados
                     opacity = 0.5, fillOpacity = 0.5,
-                    layerId = shp_custm@data$ISO3,
+                    layerId = shp_custm$shp@data$ISO3,
                     fillColor = "#D6DEE6",
                     highlightOptions = highlightOptions(color = "#696262", weight = 2,
                                                         bringToFront = TRUE) )
@@ -221,12 +247,12 @@ server <- function(input, output,session) {
         clicklist$ids <- clicklist$ids[!clicklist$ids %in% val]
       }
       
-      shp_custom <- shp[shp@data$ISO3 %in% clicklist$ids,]
-      clicklist$names <- shp_custom@data$NAME
-      print(clicklist$names)
+      shp_custm$shp <- shp[shp@data$ISO3 %in% clicklist$ids,]
+      clicklist$names <- shp_custm$shp@data$NAME
+     
       proxy %>% 
-        addPolygons( data= shp_custom,
-                     layerId = shp_custom@data$ISO3,
+        addPolygons( data= shp_custm$shp,
+                     layerId = shp_custm$shp@data$ISO3,
                      color = "#444444", weight = 0.5, smoothFactor = 0.5,
                      opacity = 1.0, fillOpacity = 0.5,
                      fillColor ="yellow" )
@@ -236,37 +262,113 @@ server <- function(input, output,session) {
  
 observe({ 
     if(as.numeric(input$area_selector) == 8){
-      updateCheckboxGroupInput(session, inputId = "chk_bx_gr", label = "Countries selected:", choices = clicklist$names, selected = clicklist$names)
+      updateAwesomeCheckboxGroup(session, inputId = "chk_bx_gr", label = "Countries selected:", choices = clicklist$names, selected = clicklist$names)
    
     }
   })
 
  observeEvent(input$create_mask,{
    
-      if(nchar(as.character(input$mask_name)) != 0){
-     ## poner bussy indicator
-     msk <<- paste(baseDir, "input_data", "mask",paste0("mask_" , as.character(input$mask_name), ".tif") , sep = .Platform$file.sep)
+   if(is.null(paths$crop)| is.null(paths$occName) | is.null(paths$baseDir)){
+     sendSweetAlert(
+       session = session,
+       title = "Error !!",
+       text = "Please, write a Crop name, Race name and select a root folder from your computer.",
+       type = "error"
+     )
+     system.time(0.5)
      
+     updateNavbarPage(session, inputId = "nvpage_tab1", selected = "Arrange Dirs system" )
+     
+   }else{
+   
+   paths$region <- as.character(input$mask_name)
+      if(nchar(as.character(input$mask_name)) != 0){
+      
+     paths$mask_path <- paste(paths$input_data_dir, paste0("mask_" , paths$region, ".tif") , sep = .Platform$file.sep)
+     
+     
+     ## poner bussy indicator
      withBusyIndicatorServer("create_mask", {
        
      raster("www/masks/mask_world.tif") %>% 
-       raster::crop(., y = extent(shp_custm)) %>%
-       raster::mask(., shp_custm) %>%
-       writeRaster(., msk, overwrite = T)
+       raster::crop(., y = extent(shp_custm$shp)) %>%
+       raster::mask(., shp_custm$shp) %>%
+       writeRaster(., paths$mask_path, overwrite = T)
      
        }) 
      updateButton(session, "create_mask",label = "Mask created",style = "success")
-     region <<- input$mask_name
+    
      
    }else{
-     showModal(modalDialog(
-       title = "Warning message:",
-       h4("Please write a valid name for the mask file."),footer = NULL,easyClose = TRUE ))
+     sendSweetAlert(
+       session = session,
+       title = "Warning !!",
+       text = "Please,write a valid mask name.",
+       type = "warning"
+     )
      
    }
-   
+ }#end else check global vars e.j paths$baseDir 
    
  })
+ 
+ #### import mask in case that it are already created
+ observeEvent(input$import_mask,{
+  
+   req(input$mask_path)
+   
+   tryCatch(
+     {
+       r<- raster::raster(input$mask_path$datapath)
+       rast_name <- input$mask_path$name
+       
+       
+       if(is.null(paths$crop)| is.null(paths$occName) | is.null(paths$baseDir)){
+         sendSweetAlert(
+           session = session,
+           title = "Error !!",
+           text = "Please, write a Crop name, Race name and select a root folder from your computer.",
+           type = "error"
+         )
+         system.time(0.5)
+         
+         updateNavbarPage(session, inputId = "nvpage_tab1", selected = "Arrange Dirs system" )
+         
+       }else{
+       
+       if(all(grepl(".tif$", rast_name), grepl("^mask_", rast_name))){ 
+         #define region rv when masj is uploaded
+         if(is.null(paths$region)){ reg <- gsub("^mask_|.tif$", "", rast_name)
+         paths$region <- reg
+         paths$mask_path <- paste(paths$input_data_dir, paste0("mask_" , paths$region, ".tif") , sep = .Platform$file.sep)
+         writeRaster(r, paths$mask_path, overwriter = T)
+         
+         }
+         
+         updateButton(session, "import_mask",label = "Imported",style = "success")
+         
+       }else{
+         stop(safeError("Invalid file extension (only .tif files are allowed)"))
+       }
+         
+         
+       } 
+     },
+     error = function(e) {
+       # return a safeError if a parsing error occurs
+       #stop(safeError(e))
+       sendSweetAlert(
+         session = session,
+         title = "Error !!",
+         text = "Please, Select a valid raster file.",
+         type = "error"
+       )
+     }
+   )
+   
+ })
+ 
  
  
 #####                                    #####

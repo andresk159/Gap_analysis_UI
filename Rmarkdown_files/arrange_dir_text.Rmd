@@ -1,0 +1,14 @@
+---
+title: "arrange dir system"
+output: html_document
+---
+
+### **Welcome to the Dir creator assistant**
+ *The assistant will guide you through all process to set up working directories necessaries for the Gap analysis.*
+ ***
+1. Write the Crop name in the Crop name field.
+2. On the race name field please write only one name for the race, genetic structure or group to analyze (This app only can run one race per time).
+3. Click the button **"choose Dir"** and search the destination folder in which the directory structure will be created.
+4. Finally, click on **"Create dirs button"**, this will create all necessary folder to store inputs, results, etc...
+5. You can also download the most updated scripts from the GitHub [CIAT repository](https://github.com/CIAT-DAPA/gap_analysis_landraces).
+
