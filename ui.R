@@ -9,7 +9,7 @@
 
 library(pacman)
 pacman::p_load(shiny, shinydashboard, leaflet, raster, rgdal, rgeos, sp, rsconnect, ggplot2, 
-               shinyFiles, shinyBS, shinyjs, yaml, shinyWidgets, rmarkdown, bsplus, tidyverse)
+               shinyFiles, shinyBS, shinyjs, yaml, shinyWidgets, rmarkdown, bsplus, tidyverse, shinydashboardPlus)
 # Define UI for application that draws a histogram
 urls <- read.csv("www/downloadable_files.csv")
 source("www/helpers.R", local = TRUE)
@@ -18,9 +18,10 @@ short_info <- function(input, title, place){
   input %>% shinyInput_label_embed(shiny_iconlink() %>% bs_embed_tooltip( title = title, placement = place))
 }
 
-header <- dashboardHeader(
+header <- dashboardHeaderPlus(
   title = "Gap analysis UI",
-  dropdownMenuOutput("messageMenu")
+  dropdownMenuOutput("messageMenu"),
+  dropdownMenuOutput("restoreSession")
   # tags$li(a(href = 'http://shinyapps.company.com',
   #           icon("power-off"),
   #           title = "Back to Apps Home"),
@@ -36,9 +37,32 @@ sidebar <- dashboardSidebar(
               ) 
                            
                            )
-body <- dashboardBody(
+body <- dashboardBody(uiOutput("modal1"),
   tabItems(
-    tabItem(tabName = "intro", tags$html('<p> Nothing to see here now </p>') 
+    tabItem(tabName = "intro", tags$html('<p> Nothing to see here now </p>') ,
+            tags$head(HTML("<style> .well{
+                        border: 1px solid rgb(45, 152, 214);
+                        position: relative;
+                        border-radius: 3px;
+                        background: #ffffff;
+                        border-top: 3px solid #1b5fe0;
+                        margin-bottom: 20px;
+                        width: 100%;
+                        box-shadow: 0 1px 1px rgba(0,0,0,.1);}
+
+            .modal-content {
+                           position: relative;
+                           background-color: #fff;
+                           -webkit-background-clip: padding-box;
+                           background-clip: padding-box;
+                           border: 1px solid #999;
+                           border: 1px solid rgba(0,0,0,.2);
+                           border-radius: 6px;
+                           outline: 0;
+                           -webkit-box-shadow: 0 3px 9px rgba(0,0,0,.5);
+                           box-shadow: 0 3px 9px rgba(0,0,0,.5);
+                           }
+                 </style>"))
             
             
     ),
@@ -51,7 +75,7 @@ body <- dashboardBody(
                        tabPanel(title = "Arrange Dirs system",
                                 sidebarLayout(
                                   sidebarPanel(width = 4, id = "write_crop_info",
-                                               h3("Dir creator assistant"),
+                                              h3( tags$strong("Dir creator assistant")),
                                                textInput(inputId =  "set.crop.name", label = "Please write Crop name") %>%
                                                  short_info(input = ., place = "top",title = "Name of the major crop"),
                                                textInput(inputId =  "set.level.name", label = "Please write Race name")%>%
@@ -88,6 +112,7 @@ body <- dashboardBody(
                                     div(id = "text_1", class= "card",
                                         shiny::includeMarkdown("Rmarkdown_files/arrange_dir_text.Rmd")
                                     )
+                                   
                                     
                                   )#end main panel
                                   
@@ -99,7 +124,7 @@ body <- dashboardBody(
                                 sidebarLayout(
                                   sidebarPanel(
                                     h3("Region creator assistant"),
-                                    radioGroupButtons("choose_1", label = "", choices  = c("Create new mask" = 1, "Import existing mask"= 2), status = "primary", justified = T ),
+                                    radioGroupButtons("choose_1", label = "", choices  = c("Create mask" = 1, "Import mask"= 2), status = "primary", justified = T ),
                                     conditionalPanel(condition = "input.choose_1 == '1'",
                                                      
                                                      selectInput("area_selector", label = "Select one region:", choices = c("World" = 0,
@@ -127,10 +152,9 @@ body <- dashboardBody(
                                     conditionalPanel(condition = "input.choose_1 == '2'",
                                                      fileInput("mask_path", "Import mask file:",multiple = FALSE,accept = c("image/tiff"), buttonLabel = icon("far fa-search"))%>%
                                                        short_info(input = ., place = "top",title = "If you have already created a raster mask, please find it and press import button"),
-                                                     bsButton("import_mask", size="default",label = "Import", block = F, style="primary"),
-                                                     bsTooltip(id = "import_mask", title = "Import region raster mask", placement = "right", trigger = "hover")
-                                                     
-                                    )
+                                                     withBusyIndicatorUI(
+                                                     bsButton("import_mask", size="default",label = "Import", block = F, style="primary")
+                                                     ))
                                     
                                   ),
                                   mainPanel(
@@ -161,9 +185,8 @@ body <- dashboardBody(
                                     withBusyIndicatorUI(
                                       button = bsButton("download_data", size="default",label = "Download", style="primary")
                                     ),
-                                    bsTooltip(id = "download_data", title = "Download input rasters", placement = "left", trigger = "hover")
-                                    
-                                    
+                                    bsTooltip(id = "download_data", title = "Download input rasters", placement = "left", trigger = "hover"),
+                                    verbatimTextOutput("log_output_1")
                                     
                                   ),
                                   mainPanel(
@@ -174,10 +197,11 @@ body <- dashboardBody(
                                   )
                                 )
                        ),
-                       tabPanel("Massage the database",
+                       tabPanel("Passport data",
                                 sidebarLayout(
                                   sidebarPanel(
                                     h3("Data base creator Assistant"),
+                                    tags$hr(),
                                     fileInput("data_in",
                                               label = "1. Select .cvs database",
                                               multiple = FALSE,
@@ -185,37 +209,20 @@ body <- dashboardBody(
                                               accept = c("text/csv",
                                                          "text/comma-separated-values,text/plain",
                                                          ".csv")
-                                    ),
-                                    fileInput("mask",
-                                              label = "2. Select region raster mask",
-                                              multiple = FALSE,
-                                              buttonLabel = icon("far fa-search"),
-                                              accept = c(".tif")
-                                    ),
-                                    numericInput("col_number", label = "3. Write the column number of race variable", value = 0),
-                                    selectInput("do_ensemble_models", label = "4. Should we Train ensemble models?", choices = c("No" = 1, "Yes" = 2)),
-                                    conditionalPanel(condition = "input.do_ensemble_models == 2", 
-                                                     selectInput("do.predictions", label = "5. Should we predict Missing accessions classes?", choices = c("No" = FALSE, "Yes" = TRUE)),
-                                                     selectInput("add.latitude", label = "6. Should we use Latitude to train models?", choices = c("No" = FALSE, "Yes" = TRUE)),
-                                                     selectInput("add.longitude", label = "7. Should we use Longitude to train models?", choices = c("No" = FALSE, "Yes" = TRUE)),
-                                                     selectInput("sampling_mthd", label = "8. If data is unbalanced, select one sampling method", choices = c("None" = "none", "Up sampling" = "up", "Down sampling" = "down"))
-                                    ),
+                                    )%>%
+                                      short_info(input = ., place = "top",title = "Browse passport data file (only .CSV files are accepted)."),
+                                    numericInput("col_number", label = "2. Write the column number of race variable", value = 1, min = 1, max= 999)%>%
+                                      short_info(input = ., place = "top",title = "Column number of response variable (race name, genetic group name, etc.)"),
                                     withBusyIndicatorUI(
                                       bsButton("prepare_data", size="default",label = "Set up database", block = F, style="primary")
                                       
                                     )
-                                    
                                   ),
                                   mainPanel(
-                                    tabBox(width = 12,
+                                    tabBox(id = "tab_passport",width = 12,
                                            tabPanel("Description",
                                                     div(id= "text_3", class = "card",
-                                                        shiny::includeMarkdown("Rmarkdown_files/database_creator.Rmd"),
-                                                        h4("In database preview"),
-                                                        dataTableOutput("data_prev"),
-                                                        tags$hr(),
-                                                        h4("Database Output"),
-                                                        dataTableOutput("data_out")
+                                                        shiny::includeMarkdown("Rmarkdown_files/database_creator.Rmd")
                                                         
                                                     )
                                                     
@@ -226,7 +233,58 @@ body <- dashboardBody(
                                                         shiny::includeMarkdown("Rmarkdown_files/database_creator_parameters.Rmd")
                                                     )
                                                     
-                                           )#end tabPanel
+                                           ),
+                                           tabPanel("Preview data",
+                                                    dataTableOutput("data_prev"),
+                                                    tags$hr(),
+                                                    valueBoxOutput("total_records"),
+                                                    valueBoxOutput("na_count"),
+                                                    valueBoxOutput("na_percent")
+                                                    
+                                                    
+                                           ),
+                                           tabPanel("Results",
+                                                    tags$div(id = "tbl_output", style = "height:800px",
+                                                           boxPlus( title = "Data base output",
+                                                                    status = "primary",
+                                                                    width = NULL,
+                                                                    solidHeader = FALSE,
+                                                                    collapsible = T,
+                                                                    closable = FALSE,
+                                                                    enable_dropdown = FALSE,
+                                                                    DTOutput("data_out")
+                                                           ),
+                                                           tags$hr(),
+                                                           box(title = "Database Summary",
+                                                               width = NULL,
+                                                               status= "primary",
+                                                               accordion(
+                                                                 accordionItem(
+                                                                   id=1,
+                                                                   title = "Counts",
+                                                                   color = "danger",
+                                                                   collapsed = T,
+                                                                   uiOutput("infbox")
+                                                                 ),
+                                                                 accordionItem(
+                                                                   id=2,
+                                                                   title = "Descriptive measures",
+                                                                   color = "warning",
+                                                                   collapse = FALSE,
+                                                                   "some text also"
+                                                                 ),
+                                                                 accordionItem(
+                                                                   id = 3,
+                                                                   title = "PCA",
+                                                                   color = "info",
+                                                                   collapsed = FALSE,
+                                                                   "more text"
+                                                                 )
+                                                                )
+                                                               )
+                                                           )
+                                                    
+                                                    )#end tabPanel
                                     )#end tabbox
                                     
                                     
@@ -394,7 +452,7 @@ body <- dashboardBody(
 )#end body
 
 
-dashboardPage(skin = "green",
+dashboardPagePlus(skin = "green",
   header,
   sidebar,#dashboardSidebar(disable = F),
   body
