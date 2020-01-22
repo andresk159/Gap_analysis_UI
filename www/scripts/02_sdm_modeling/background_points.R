@@ -43,20 +43,23 @@ NAFiltered <- function(crop = "potato", occName = "ajanhuiri"){
 # Profiling function
 OCSVMprofiling2 <- function(xy, varstack, nu = 0.5){
   
-  background <- raster::as.data.frame(varstack[[1]], xy = T) %>% 
-    drop_na() %>% 
-    dplyr::select(1:2)
-  bioclim    <- varstack
-  coo        <- background
-  mat        <- cbind(xy, rep(1, nrow(xy)))
-  mat        <- as.data.frame(cbind(1, raster::extract(bioclim, mat[,1:2])))
+  background <- raster::as.data.frame(varstack, xy = T) %>% 
+    drop_na()
+  
+  
+  mat        <-  xy %>% dplyr::select(., which(names(xy) %in% names(varstack))) %>%
+    dplyr::transmute(pres = 1, !!!.)
+  #mat        <- xy[, names(xy) %in% names(varstack)]
+  #mat        <- as.data.frame(cbind(1, raster::extract(varstack, mat[,1:2])))
   
   mod        <- e1071::svm(mat[, -1], y = NULL, type = "one-classification", nu = nu)
-  proj       <- as.data.frame(cbind(1, raster::extract(bioclim, cbind(coo))))
-  pre        <- predict(mod, proj[, -1])
-  absence    <- coo[(which(pre == 0)),]
-  presence   <- coo[(which(pre != 0)),]
   
+  #proj       <- as.data.frame(cbind(1, raster::extract(varstack, cbind(background))))
+  
+  pre        <- predict(mod, background[, names(background) %in% names(mat[, -1])])
+  absence    <- background[(which(pre == 0)), c("x", "y")]
+  presence   <- background[(which(pre != 0)), c("x", "y")]
+  gc()
   return(list(Absences = absence, Presences = presence))
 }
 
@@ -66,26 +69,9 @@ pseudoAbsences2 <- function(xy, background, exclusion.buffer = 0.0166, tms = 10,
   presences <- sp::SpatialPoints(xy)
   crs(presences) <- coord.sys
   spol <- rgeos::gBuffer(presences, width = exclusion.buffer)
+ 
   
-  #very HARD WAY TO CREATE THE BUFFERS
-  # polybuffs <- list()
-  # r         <- exclusion.buffer
-  # pr        <- xy
-  # polys     <- list()
-  # for (i in 1:nrow(pr)) {
-  #   discbuff <- spatstat::disc(radius = r, centre = c(pr[i, 1], pr[i, 2]))
-  #   discpoly <- sp::Polygon(rbind(cbind(discbuff$bdry[[1]]$x, y = discbuff$bdry[[1]]$y), c(discbuff$bdry[[1]]$x[1], y = discbuff$bdry[[1]]$y[1])))
-  #   polys    <- c(polys, discpoly)
-  # }
-  # spolys <- list()
-  # for (i in 1:length(polys)) {
-  #   spolybuff <- sp::Polygons(list(polys[[i]]), ID = i)
-  #   spolys    <- c(spolys, spolybuff)
-  #   spol      <- sp::SpatialPolygons(spolys)
-  # }
-  
-  coords.l  <- background
-  coords    <- coords.l
+  coords    <- background
   sp.coords <- sp::SpatialPoints(coords)
   crs(sp.coords) <- coord.sys
   a         <- sp::over(sp.coords, spol)
@@ -148,33 +134,7 @@ pseudoAbsences_generator <- function(file_path, clsModel, overwrite = F, correla
     
     cat("Creating random Pseudo-absences points using: ", pa_method, "method \n")
     
-    if(pa_method == "ntv_area_ecoreg"){
-      
-      cat("Load native area restricted by ecoregions\n")
-      if(!file.exists(paste0(input_data_dir, "/by_crop/", crop, "/native_area/", occName, "/native_area_", occName,".tif"))){
-        ntv_area <- NAFiltered(crop = crop, occName = occName)
-      } else {
-        ntv_area <- raster::raster(paste0(input_data_dir, "/by_crop/", crop, "/native_area/", occName, "/native_area_", occName,".tif"))
-      }
-      
-      climLayers <- raster::crop(current_clim_layer, raster::extent(ntv_area))
-      climLayers <- raster::mask(climLayers, ntv_area)
-      #Remove variables that are causing problems
-      climLayers <- climLayers[[ -grep(paste0(tolower(c("Yield", "Production", "Harvested"), collapse = "|")), tolower(names(climLayers))) ]] 
-      
-      unsuit_bg <- OCSVMprofiling2(xy = unique(spData[,c("Longitude","Latitude")]), varstack = climLayers)
-      random_bg <- pseudoAbsences2(xy = unique(spData[,c("Longitude","Latitude")]), background = unsuit_bg$Absences, exclusion.buffer = 0.083*5, tms = 10, coord.sys = crs(current_clim_layer))
-      
-      bg_spPoints  <- SpatialPoints(coords = random_bg[random_bg$Status == 0, c("Longitude", "Latitude")])
-      proj4string(bg_spPoints)<- crs(mask)
-      raster::shapefile(bg_spPoints, paste0(input_data_dir, "/by_crop/", crop, "/lvl_1/", occName,"/" ,region, "/background/background_", occName, ".shp"), overwrite = TRUE)
-      
-      nSamples <- nrow(random_bg[random_bg$Status == 0, c("Longitude", "Latitude")])
-      cat(nSamples, "pseudo-absences generated for n =", nrow(unique(spData[,c("Longitude","Latitude")])), "presences\n")
-      
-      xranSample <- random_bg[random_bg$Status == 0, c("Longitude","Latitude")]
-      colnames(xranSample) <- c("lon","lat")
-    }
+
     if(pa_method == "ecoreg"){
       
       elu     <- raster::raster(paste0(input_data_dir, "/ecosystems/globalelu/World_ELU_2015_5km.tif"))
@@ -188,8 +148,8 @@ pseudoAbsences_generator <- function(file_path, clsModel, overwrite = F, correla
       #Remove variables that are causing problems
       climLayers <- climLayers[[ -grep(paste0(tolower(c("Yield", "Production", "Harvested")), collapse = "|"), tolower(names(climLayers))) ]] 
       
-      unsuit_bg <- OCSVMprofiling2(xy = unique(spData[,c("Longitude","Latitude")]), varstack = climLayers)
-      random_bg <- pseudoAbsences2(xy = unique(spData[,c("Longitude","Latitude")]), background = unsuit_bg$Absences, exclusion.buffer = 0.083*5, tms = 10, coord.sys = crs(current_clim_layer))
+      unsuit_bg <- OCSVMprofiling2(xy = spData, varstack = climLayers)
+      random_bg <- pseudoAbsences2(xy = spData[,c("Longitude","Latitude")], background = unsuit_bg$Absences, exclusion.buffer = 0.083*5, tms = 10, coord.sys = crs(current_clim_layer))
       
       bg_spPoints  <- SpatialPoints(coords = random_bg[random_bg$Status == 0, c("Longitude", "Latitude")])
       proj4string(bg_spPoints)<- crs(mask)

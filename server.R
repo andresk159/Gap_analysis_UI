@@ -9,9 +9,8 @@
 
 suppressMessages(if(!require(pacman)){install.packages("pacman");library(pacman)}else{library(pacman)})
 pacman::p_load(tcltk, adehabitatHR,   raster, rgdal, doSNOW, sdm, dismo,  rgeos, distances,   sp, shiny, 
-               tidyverse, rlang, sf, gdistance, caret, earth, fastcluster, xlsx,  FactoMineR, deldir,
-               parallelDist, bindrcpp, foreach, doParallel,  pROC, maxnet, usdm, mltools, ISLR, nnet, 
-               caretEnsemble, ranger, ModelMetrics, rminer)
+               tidyverse, rlang, sf, gdistance, caret, earth, fastcluster,  FactoMineR, deldir,
+               parallelDist, bindrcpp, foreach, doParallel,  pROC, maxnet, usdm, mltools, ISLR, nnet,ranger,  googleVis)
 
 # setting global variables
 g <- gc(reset = T); rm(list = ls()); options(warn = -1); options(scipen = 999)
@@ -19,6 +18,7 @@ urls <- read.csv("www/downloadable_files.csv", stringsAsFactors = F)
 shp <- shapefile("www/world_shape_simplified/all_countries_simplified.shp")
 shp <- shp[shp@data$ISO3 != "ATA",]
 scrDir <- "www/scripts"
+coor_sys <- crs("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
 if(Sys.getenv('SHINY_PORT') == "") options(shiny.maxRequestSize=30*1024^2)
 options(scipen = 999)
 update_scripts <- FALSE
@@ -63,6 +63,8 @@ observe({
             paths$data_dir   <- paste0(paths$input_data_dir, "/cleaned_data");if(!file.exists(paths$data_dir)){dir.create(paths$data_dir, recursive = TRUE)}
             paths$mask_path  <-  paste(paths$input_data_dir, paste0("mask_" , paths$region, ".tif") , sep = .Platform$file.sep)
             paths$bd_file    <- paste0(paths$data_dir, "/", paths$crop, "_bd.csv")
+            
+            if(file.exists(paths$bd_file)){resources$cleaned_data <- read.csv(paths$bd_file, header = T, stringsAsFactors = F)}
             #save automatically inputs and results to be restored 
             saveRDS(paths, paste0(paths$baseDir, "/",paths$crop, "_", paths$occName ,"_Rsession.rds") )
             }
@@ -156,6 +158,7 @@ clim_layer <- reactive({
           paths$crop     <- rsd$crop
           paths$region   <- rsd$region
           paths$occName  <- rsd$occName
+          paths$bd_file  <- rsd$bd_file
           
           sendSweetAlert(
             session = session,
@@ -191,7 +194,8 @@ clim_layer <- reactive({
   #boton para seleccionar el directorios
   observeEvent(input$select_path_btn, {
     text_path <- parseDirPath(roots =  c('Documents' = Sys.getenv("HOME"), 'Local Disk' = Sys.getenv("HOMEDRIVE") ), input$select_path_btn)
-    paths$baseDir <- text_path
+    
+    paths$baseDir <- as.character(text_path)
     #.GlobalEnv$baseDir <- as.character(text_path)
     updateTextInput(session, "selected.root.folder", 
                     label = "Dir path chosen",
@@ -205,7 +209,7 @@ clim_layer <- reactive({
   observeEvent(input$create_dirs,{
   
     if(!is.null(paths$baseDir)){
-      
+     
       paths$crop <- input$set.crop.name
       paths$occName <- input$set.level.name
       
@@ -677,7 +681,7 @@ observe({
      source(paste("www/scripts/01_classification/classification_function.R", sep = ""), local = F)
      source(paste("www/scripts/01_classification/prepare_input_data.R", sep = ""), local = F)
     tryCatch({
-      
+     
       resources$cleaned_data <- prepare_input_data(data_path = input$data_in$datapath,
                                       col_number = input$col_number,
                                       mask = paths$mask_path,
@@ -695,7 +699,7 @@ observe({
       sendSweetAlert(
         session = session,
         title = "Error !!",
-        text = paste("Ensemble models fitting process failed \n", e),
+        text = paste("Cleaning database process failed \n", e),
         type = "error"
       )
       
@@ -707,30 +711,99 @@ observe({
     output$data_out <-  renderDT({
       req(paths$bd_file)
       if(file.exists(paths$bd_file)){
-        df <- read.csv(paths$bd_file, header =T, stringsAsFactors = F)
-      }else{df <- NULL}
+        resources$cleaned_data <- read.csv(paths$bd_file, header =T, stringsAsFactors = F)
+      }
       
-      datatable(df , options = list(pageLength =5, scrollX = TRUE, searching = FALSE)) 
+      datatable(resources$cleaned_data, options = list(pageLength =5, scrollX = TRUE, searching = FALSE)) 
     })
     
-    clases <- colnames(resources$descriptive$Testing_CM$ensemble$table)
-    sensis <- 
+    
     output$infbox <- renderUI({
       
   list(
+    fluidRow(
       valueBox(value =  nrow(resources$cleaned_data),
-               subtitle = "Total Rows",
+               subtitle = "Valid records",
                icon     = icon("fas fa-bars"),
-               color    = NULL),
-      valueBox( value= "",
-                subtitle = "Total Rows",
-                icon     = icon("fas fa-crosshairs"),
-                color    = "light-blue")
-      
+               color    = "aqua",
+               width    = 9)
+    ),
+    fluidRow(
+             valueBox( value = ncol(resources$cleaned_data)-4,
+                       subtitle = "Variables",
+                       icon     = icon("fas fa-crosshairs"),
+                       color    = "light-blue",
+                       width    = 9) 
+    )
       )
+      
     
       
     })
+    
+    output$gchart1 <- renderGvis({
+      gvisPieChart(resources$cleaned_data %>% dplyr::group_by(ensemble) %>% count(),
+                   options = list(is3D = "true",
+                                  width=400,
+                                  height=300,
+                                  title = "Classes counts"))
+    })
+    
+    output$lmap1 <- renderLeaflet({
+      
+      dt <- resources$cleaned_data %>% 
+        dplyr::select(ensemble:Longitude) 
+      pp<- dt
+      coordinates(pp) <- ~Latitude+Longitude
+      crs(pp) <- coor_sys
+      bbx <- pp@bbox
+      cent <- as.numeric(rowSums(bbx)/2)
+      pal <- colorFactor(palette = "Set1", domain = unique(dt$ensemble))
+      
+      leaflet("lmap1") %>% 
+        setView(lat= cent[1], lng = cent[2], zoom = 3) %>% 
+        addTiles(options = providerTileOptions(noWrap = TRUE) )%>% 
+      addCircles(data = dt, 
+                 radius =  ~rep(20000, nrow(dt)),
+                 color = ~pal(ensemble), 
+                 stroke = F, 
+                 fillOpacity = 0.8,
+                 label = ~as.character(ensemble)) %>%
+        addLegend(data = dt, 
+                  position = "bottomright", 
+                  colors = ~pal(unique(ensemble)), 
+                  labels = ~factor(unique(ensemble)),
+                  title = "Class names",
+                  opacity = 0.8)
+    })
+    
+    output$pca_res <- renderPlot({
+      
+      bd <- resources$cleaned_data %>% 
+        dplyr::mutate(., ensemble = as.factor(ensemble)) %>%
+        dplyr::select(., -starts_with("long"), -starts_with("lat"), -contains("status"))
+      
+      pca <- FactoMineR::PCA(bd[, -1], scale.unit = TRUE, ncp = 3, graph = FALSE)
+      df_pca <- data.frame(  pca$ind$coord[, c(1,2)], class = bd$ensemble)
+      
+      p <- ggplot(data = df_pca, aes(x = Dim.1, y = Dim.2, color = class)) +
+        geom_point() + 
+        stat_ellipse(geom="polygon", aes(fill = class), alpha = 0.2, show.legend = FALSE, level = 0.95) +
+        geom_hline(yintercept = 0, lty = 2)+
+        geom_vline(xintercept = 0, lty = 2)+
+        xlab(paste("PC1 (", round(pca$eig[,2],1)[1], "%)")) + 
+        ylab(paste("PC2 (", round(pca$eig[,2],1)[2], "%)")) +
+        theme_minimal() +
+        theme(panel.grid = element_blank(),
+              panel.border = element_rect(fill= "transparent"))
+      
+      p
+      
+      
+    }, res = 100)
+    
+    
+    
 
   })
   

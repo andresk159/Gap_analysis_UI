@@ -9,7 +9,7 @@
 
 library(pacman)
 pacman::p_load(shiny, shinydashboard, leaflet, raster, rgdal, rgeos, sp, rsconnect, ggplot2, 
-               shinyFiles, shinyBS, shinyjs, yaml, shinyWidgets, rmarkdown, bsplus, tidyverse, shinydashboardPlus)
+               shinyFiles, shinyBS, shinyjs, yaml, shinyWidgets, rmarkdown, bsplus, tidyverse, shinydashboardPlus, DT )
 # Define UI for application that draws a histogram
 urls <- read.csv("www/downloadable_files.csv")
 source("www/helpers.R", local = TRUE)
@@ -45,7 +45,7 @@ body <- dashboardBody(uiOutput("modal1"),
                         position: relative;
                         border-radius: 3px;
                         background: #ffffff;
-                        border-top: 3px solid #1b5fe0;
+                        border-top: 4px solid #3F89B8;
                         margin-bottom: 20px;
                         width: 100%;
                         box-shadow: 0 1px 1px rgba(0,0,0,.1);}
@@ -262,23 +262,31 @@ body <- dashboardBody(uiOutput("modal1"),
                                                                  accordionItem(
                                                                    id=1,
                                                                    title = "Counts",
-                                                                   color = "danger",
-                                                                   collapsed = T,
-                                                                   uiOutput("infbox")
+                                                                   color = "success",
+                                                                   collapsed = FALSE,
+                                                                   fluidRow(
+                                                                         column(7, 
+                                                                                htmlOutput("gchart1")  
+                                                                              ),
+                                                                       column(5,
+                                                                              uiOutput("infbox")
+                                                                              )
+                                                                   )
+                                                                   
                                                                  ),
                                                                  accordionItem(
                                                                    id=2,
-                                                                   title = "Descriptive measures",
-                                                                   color = "warning",
-                                                                   collapse = FALSE,
-                                                                   "some text also"
+                                                                   title = "Valid records Map",
+                                                                   color = "success",
+                                                                   collapse = TRUE,
+                                                                   leafletOutput("lmap1")
                                                                  ),
                                                                  accordionItem(
                                                                    id = 3,
                                                                    title = "PCA",
-                                                                   color = "info",
-                                                                   collapsed = FALSE,
-                                                                   "more text"
+                                                                   color = "success",
+                                                                   collapsed = TRUE,
+                                                                   plotOutput("pca_res")
                                                                  )
                                                                 )
                                                                )
