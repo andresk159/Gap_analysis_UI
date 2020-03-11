@@ -96,9 +96,7 @@ pseudoAbsences2 <- function(xy, background, exclusion.buffer = 0.0166, tms = 10,
 # "ecoreg": EcoRegion
 # "all_area": Full extent of mask
 pseudoAbsences_generator <- function(file_path, clsModel, overwrite = F, correlation = 0, pa_method = "ntv_area_ecoreg"){
-  
- 
-  
+
   cat("Loading raster files","\n")
   current_clim_layer_generic <- lapply(list.files(climDir, pattern =  ".tif$", full.names = T), raster)
   current_clim_layer_sp      <- lapply(list.files(paste0(baseDir, "/input_data/by_crop/", crop, "/raster/", region), pattern = ".tif$", full.names = T), raster)
